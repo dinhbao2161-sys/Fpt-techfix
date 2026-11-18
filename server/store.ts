@@ -11,6 +11,11 @@ interface AppDatabase {
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'app-db.json');
 
+let memoryFallbackDb: AppDatabase = {
+  communityIssues: [],
+  helpfulOverrides: {},
+};
+
 function ensureDbDir() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -18,39 +23,43 @@ function ensureDbDir() {
 }
 
 function readDb(): AppDatabase {
-  ensureDbDir();
-  if (!fs.existsSync(DB_FILE)) {
-    const initial: AppDatabase = {
-      communityIssues: [],
-      helpfulOverrides: {},
-    };
-    fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2), 'utf8');
-    return initial;
-  }
-
   try {
+    if (!fs.existsSync(DB_FILE)) {
+      return {
+        communityIssues: [...memoryFallbackDb.communityIssues],
+        helpfulOverrides: { ...memoryFallbackDb.helpfulOverrides },
+      };
+    }
+
     const raw = fs.readFileSync(DB_FILE, 'utf8');
     const parsed = JSON.parse(raw) as Partial<AppDatabase>;
-    return {
+    const loaded: AppDatabase = {
       communityIssues: Array.isArray(parsed.communityIssues) ? parsed.communityIssues : [],
       helpfulOverrides:
         parsed.helpfulOverrides && typeof parsed.helpfulOverrides === 'object'
           ? parsed.helpfulOverrides
           : {},
     };
+    memoryFallbackDb = loaded;
+    return loaded;
   } catch {
     return {
-      communityIssues: [],
-      helpfulOverrides: {},
+      communityIssues: [...memoryFallbackDb.communityIssues],
+      helpfulOverrides: { ...memoryFallbackDb.helpfulOverrides },
     };
   }
 }
 
 function writeDb(db: AppDatabase) {
-  ensureDbDir();
-  const tempPath = `${DB_FILE}.${process.pid}.tmp`;
-  fs.writeFileSync(tempPath, JSON.stringify(db, null, 2), 'utf8');
-  fs.renameSync(tempPath, DB_FILE);
+  memoryFallbackDb = db;
+  try {
+    ensureDbDir();
+    const tempPath = `${DB_FILE}.${process.pid}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(db, null, 2), 'utf8');
+    fs.renameSync(tempPath, DB_FILE);
+  } catch (err) {
+    console.warn('Could not persist app-db.json to disk, keeping in-memory copy:', err);
+  }
 }
 
 export function getAllIssuesMerged(): Issue[] {

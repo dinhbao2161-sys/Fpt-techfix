@@ -178,9 +178,20 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newIssue),
       });
-      const data = (await res.json()) as { issue?: Issue; error?: string };
+      const rawText = await res.text();
+      let data: { issue?: Issue; error?: string } = {};
+      if (rawText) {
+        try {
+          data = JSON.parse(rawText) as { issue?: Issue; error?: string };
+        } catch {
+          return {
+            ok: false,
+            error: `Máy chủ trả về phản hồi không hợp lệ (HTTP ${res.status}). Vui lòng thử lại.`,
+          };
+        }
+      }
       if (!res.ok || !data.issue) {
-        return { ok: false, error: data.error || 'Không thể lưu đóng góp.' };
+        return { ok: false, error: data.error || `Không thể lưu đóng góp (HTTP ${res.status}).` };
       }
 
       const savedIssue = data.issue;
@@ -189,7 +200,7 @@ export default function App() {
       setToastMessage('Đã xuất bản giải pháp mới lên cộng đồng TechCare!');
       return { ok: true };
     } catch {
-      return { ok: false, error: 'Lỗi kết nối máy chủ khi gửi bài.' };
+      return { ok: false, error: 'Lỗi kết nối máy chủ khi gửi bài. Vui lòng thử lại.' };
     }
   };
 
